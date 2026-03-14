@@ -44,7 +44,6 @@ analysis_benchmark.json
 
 *.log
 *.swp
-*.lock
 *.tmp
 *.temp
 
@@ -64,9 +63,14 @@ Thumbs.db
 # ==============================
 
 .gradle/
-**/android/local.properties
-**/android/**/GeneratedPluginRegistrant.java
-**/android/captures/
+android/.gradle/
+android/local.properties
+android/app/build/
+android/build/
+android/captures/
+
+# Signing files (do not commit secrets)
+
 *.jks
 *.keystore
 key.properties
@@ -77,19 +81,19 @@ key.properties
 
 # ==============================
 
-**/ios/**/*.mode1v3
-**/ios/**/*.mode2v3
-**/ios/**/*.pbxuser
-**/ios/**/*.perspectivev3
-**/ios/**/xcuserdata
-**/ios/**/.symlinks
-**/ios/**/Pods/
-**/ios/**/DerivedData/
-**/ios/Flutter/ephemeral/
-**/ios/Flutter/App.framework
-**/ios/Flutter/Flutter.framework
-**/ios/Flutter/flutter_assets/
-**/ios/Flutter/Generated.xcconfig
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/ephemeral/
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/flutter_assets/
+ios/Flutter/Generated.xcconfig
+ios/DerivedData/
+ios/**/*.mode1v3
+ios/**/*.mode2v3
+ios/**/*.pbxuser
+ios/**/*.perspectivev3
+ios/**/xcuserdata/
 
 # ==============================
 
@@ -97,10 +101,10 @@ key.properties
 
 # ==============================
 
-**/macos/Flutter/GeneratedPluginRegistrant.swift
-**/macos/Flutter/ephemeral
-**/Pods/
-**/xcuserdata/
+macos/Flutter/GeneratedPluginRegistrant.swift
+macos/Flutter/ephemeral
+macos/Pods/
+macos/**/xcuserdata/
 
 # ==============================
 
@@ -108,9 +112,9 @@ key.properties
 
 # ==============================
 
-**/windows/flutter/generated_plugin_registrant.cc
-**/windows/flutter/generated_plugin_registrant.h
-**/windows/flutter/generated_plugins.cmake
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugin_registrant.h
+windows/flutter/generated_plugins.cmake
 
 # ==============================
 
@@ -118,9 +122,9 @@ key.properties
 
 # ==============================
 
-**/linux/flutter/generated_plugin_registrant.cc
-**/linux/flutter/generated_plugin_registrant.h
-**/linux/flutter/generated_plugins.cmake
+linux/flutter/generated_plugin_registrant.cc
+linux/flutter/generated_plugin_registrant.h
+linux/flutter/generated_plugins.cmake
 
 # ==============================
 
