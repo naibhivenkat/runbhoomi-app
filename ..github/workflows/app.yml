@@ -1,0 +1,45 @@
+name: RunBhoomi Flutter CI
+
+on:
+  push:
+    branches: "**"
+  pull_request:
+    branches: "**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.19.0"
+
+      - name: Install Dependencies
+        run: |
+          cd runbhoomi_flutter
+          flutter pub get
+
+      - name: Analyze
+        run: |
+          cd runbhoomi_flutter
+          flutter analyze
+
+      - name: Run Tests
+        run: |
+          cd runbhoomi_flutter
+          flutter test
+
+      - name: Build APK
+        run: |
+          cd runbhoomi_flutter
+          flutter build apk
