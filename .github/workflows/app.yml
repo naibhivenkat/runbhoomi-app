@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -25,21 +24,13 @@ jobs:
           flutter-version: "3.19.0"
 
       - name: Install Dependencies
-        run: |
-          cd runbhoomi_flutter
-          flutter pub get
+        run: flutter pub get
 
       - name: Analyze
-        run: |
-          cd runbhoomi_flutter
-          flutter analyze
+        run: flutter analyze
 
       - name: Run Tests
-        run: |
-          cd runbhoomi_flutter
-          flutter test
+        run: flutter test
 
       - name: Build APK
-        run: |
-          cd runbhoomi_flutter
-          flutter build apk
+        run: flutter build apk
