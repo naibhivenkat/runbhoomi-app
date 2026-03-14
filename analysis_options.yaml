@@ -1,9 +1,9 @@
 include: package:flutter_lints/flutter.yaml
 
 linter:
-rules:
-use_key_in_widget_constructors: false
-prefer_const_constructors: false
-prefer_const_constructors_in_immutables: false
-avoid_print: false
-library_private_types_in_public_api: false
+  rules:
+    use_key_in_widget_constructors: false
+    prefer_const_constructors: false
+    prefer_const_constructors_in_immutables: false
+    avoid_print: false
+    library_private_types_in_public_api: false
