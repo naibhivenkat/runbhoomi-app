@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 
-class CreateMatchScreen extends StatelessWidget {
+class EditProfileScreen extends StatelessWidget {
 
-  const CreateMatchScreen({super.key});
+  const EditProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Create Match")),
+      appBar: AppBar(title: const Text("Edit Profile")),
 
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -17,13 +17,13 @@ class CreateMatchScreen extends StatelessWidget {
 
             TextField(
               decoration: InputDecoration(
-                labelText: "Sport",
+                labelText: "Name",
               ),
             ),
 
             TextField(
               decoration: InputDecoration(
-                labelText: "Location",
+                labelText: "City",
               ),
             ),
 

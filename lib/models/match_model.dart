@@ -1,14 +1,15 @@
-
 class MatchModel {
-  final int id;
-  final int team1;
-  final int team2;
-  final int overs;
+
+  final String id;
+  final String sport;
+  final String location;
+  final String date;
 
   MatchModel({
     required this.id,
-    required this.team1,
-    required this.team2,
-    required this.overs
+    required this.sport,
+    required this.location,
+    required this.date,
   });
+
 }
