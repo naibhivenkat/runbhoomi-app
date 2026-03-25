@@ -86,6 +86,7 @@ class _RegisterFlowState extends State<RegisterFlow> {
   /// ================= LOCATION =================
   Future pickLocation() async {
     await Permission.location.request();
+    if (!mounted) return;
 
     var result = await Navigator.push(
       context,
@@ -114,6 +115,7 @@ class _RegisterFlowState extends State<RegisterFlow> {
 
   Future verifyOtp() async {
     var res = await ApiService.verifyOtp(email, getOtp());
+    if (!mounted) return;
 
     if (res["status"] == "success") {
       next();
@@ -149,6 +151,7 @@ class _RegisterFlowState extends State<RegisterFlow> {
       "bowling_style": bowlingStyle,
       "profile_photo": imageFile?.path
     });
+    if (!mounted) return;
 
     showMsg(res["message"]);
 

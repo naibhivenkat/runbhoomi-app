@@ -111,7 +111,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   /// ================= AUTO OTP =================
   void listenOtp() async {
-    await SmsAutoFill().listenForCode;
+    await SmsAutoFill().listenForCode();
 
     SmsAutoFill().code.listen((code) {
       if (code.length == 6) {
@@ -248,6 +248,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         emailController.text,
         passwordController.text,
       );
+      if (!mounted) return;
 
       showMsg("Password reset successful");
       Navigator.pop(context);

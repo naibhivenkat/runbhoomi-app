@@ -64,6 +64,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString("token", res["token"]);
 
+      // TODO: 
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, "/home");
 
     } catch (e) {
@@ -108,6 +110,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString("token", res["token"]);
+      if (!mounted) return;
 
       Navigator.pushReplacementNamed(context, "/home");
 
@@ -135,6 +138,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString("token", res["token"]);
+      if (!mounted) return;
 
       Navigator.pushReplacementNamed(context, "/home");
 
