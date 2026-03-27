@@ -59,7 +59,7 @@ class ApiService {
     return jsonDecode(res.body);
   }
 
-  static Future<Map<String, dynamic>> googleLogin(String idToken) async {
+static Future<Map<String, dynamic>> googleLogin(String idToken) async {
   final url = Uri.parse("$baseUrl/auth/google");
 
   try {
@@ -74,14 +74,21 @@ class ApiService {
     ).timeout(const Duration(seconds: 20));
 
     if (res.statusCode == 200) {
-      return jsonDecode(res.body);
+      final data = jsonDecode(res.body);
+
+      // ✅ NORMALIZE RESPONSE
+      return {
+        "token": data["token"],
+        "email": data["user"]?["email"], // 🔥 flatten here
+        "user": data["user"],
+      };
     } else {
       throw Exception("Google Login Failed: ${res.body}");
     }
   } catch (e) {
     rethrow;
   }
-} 
+}
 
 static Future login(String email, String password) async {
   final res = await http.post(
@@ -153,6 +160,24 @@ static Future resetPassword(String email, String password) async {
       "password": password
     }),
   );
+}
+
+
+// ======     Matches API    ======
+
+static Future<List> getMatches(String email) async {
+  final url = Uri.parse("$baseUrl/matches/get_matches")
+      .replace(queryParameters: {
+    "email": email,
+  });
+
+  final res = await http.get(url);
+
+  if (res.statusCode == 200) {
+    return jsonDecode(res.body);
+  } else {
+    throw Exception("Failed to load matches");
+  }
 }
 
 }

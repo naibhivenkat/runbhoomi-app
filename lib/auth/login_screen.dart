@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/colors.dart';
 import '../services/api_service.dart';
 import '../services/google_auth_service.dart';
+import '../services/session_service.dart'; 
 import '../widgets/auth_button.dart';
 import '../widgets/auth_textfield.dart';
 import '../widgets/social_login_button.dart';
@@ -21,7 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool loading = false;
   bool obscure = true;
 
-  int step = 0; // 0 = login, 1 = OTP
+  int step = 0;
 
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
@@ -52,6 +52,7 @@ class _LoginScreenState extends State<LoginScreen> {
     return otpControllers.map((e) => e.text).join();
   }
 
+  // ================= LOGIN =================
   Future login() async {
     setState(() => loading = true);
 
@@ -61,12 +62,14 @@ class _LoginScreenState extends State<LoginScreen> {
         passwordController.text,
       );
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString("token", res["token"]);
+      await SessionService.saveUser(
+        emailController.text.trim(),
+        res["token"],
+      );
 
-      // TODO: 
       if (!mounted) return;
-      Navigator.pushReplacementNamed(context, "/home");
+
+      Navigator.pushReplacementNamed(context, "/home"); // ✅ CLEAN
 
     } catch (e) {
       showError("Invalid email or password");
@@ -75,6 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // ================= SEND OTP =================
   Future sendOtp() async {
     if (emailController.text.isEmpty) {
       showError("Enter email");
@@ -87,7 +91,6 @@ class _LoginScreenState extends State<LoginScreen> {
       await ApiService.loginOtp(emailController.text);
 
       setState(() => step = 1);
-
       startTimer();
 
       showError("OTP sent");
@@ -99,6 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // ================= VERIFY OTP =================
   Future verifyOtp() async {
     setState(() => loading = true);
 
@@ -108,11 +112,14 @@ class _LoginScreenState extends State<LoginScreen> {
         getOtp(),
       );
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString("token", res["token"]);
+      await SessionService.saveUser(
+        emailController.text.trim(),
+        res["token"],
+      );
+
       if (!mounted) return;
 
-      Navigator.pushReplacementNamed(context, "/home");
+      Navigator.pushReplacementNamed(context, "/home"); // ✅ FIXED
 
     } catch (e) {
       showError("Invalid OTP");
@@ -129,6 +136,7 @@ class _LoginScreenState extends State<LoginScreen> {
     otpFocusNodes[0].requestFocus();
   }
 
+  // ================= GOOGLE LOGIN =================
   Future googleLogin() async {
     setState(() => loading = true);
 
@@ -136,11 +144,23 @@ class _LoginScreenState extends State<LoginScreen> {
       final idToken = await GoogleAuthService.signIn();
       final res = await ApiService.googleLogin(idToken!);
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString("token", res["token"]);
+
+        final email = res["user"]["email"];
+        
+
+        if (email == null || email.toString().isEmpty) {
+          showError("Email not returned from Google login");
+          return;
+        }
+
+        await SessionService.saveUser(
+          email,
+          res["token"],
+        );
+
       if (!mounted) return;
 
-      Navigator.pushReplacementNamed(context, "/home");
+      Navigator.pushReplacementNamed(context, "/home"); 
 
     } catch (e) {
       showError("Google login failed");
@@ -156,7 +176,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
       backgroundColor: AppColors.background,
 
@@ -214,7 +233,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 10),
 
-                /// 🔥 FORGOT PASSWORD (ADDED)
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
@@ -240,6 +258,28 @@ class _LoginScreenState extends State<LoginScreen> {
                   textColor: AppColors.primary,
                   border: true,
                   onPressed: loading ? () {} : sendOtp,
+                ),
+
+                const SizedBox(height: 20),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text("Don't have an account? "),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.pushNamed(context, "/register");
+                      },
+                      child: Text(
+                        "Sign up",
+                        style: TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
 
@@ -350,3 +390,5 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+
+
