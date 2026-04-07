@@ -5,6 +5,7 @@ import '../../uttls/community_screen.dart';
 import '../../uttls/looking_screen.dart';
 import '../home/home_screen.dart';
 import '../profile/my_cricket_screen.dart';
+import '../tournament/tournament_list_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -233,6 +234,21 @@ class AppDrawer extends StatelessWidget {
 
           const ListTile(
               leading: Icon(Icons.person), title: Text("Profile")),
+
+          ListTile(
+                leading: const Icon(Icons.emoji_events, color: Colors.orange),
+                title: const Text("Tournaments"),
+                onTap: () {
+                  Navigator.pop(context);
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TournamentListScreen(),
+                    ),
+                  );
+                },
+              ),
 
           const ListTile(
               leading: Icon(Icons.settings), title: Text("Settings")),

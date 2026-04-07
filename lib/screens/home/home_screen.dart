@@ -1,25 +1,17 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
 import '../match/match_detail_screen.dart';
 
-////////////////////////////////////////////////////////////
-/// 🎨 PREMIUM COLOR SYSTEM
-////////////////////////////////////////////////////////////
-
 class AppColors {
   static const primary = Color(0xFF0F172A);
   static const accent = Color(0xFF16A34A);
   static const live = Color(0xFFDC2626);
+  static const bg = Color(0xFFF1F5F9);
   static const textPrimary = Color(0xFF111827);
   static const textSecondary = Color(0xFF6B7280);
-  static const card = Color(0xFFFFFFFF);
-  static const bg = Color(0xFFF1F5F9);
 }
-
-////////////////////////////////////////////////////////////
-/// 🏠 HOME SCREEN
-////////////////////////////////////////////////////////////
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -31,40 +23,50 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   List matches = [];
   bool loading = true;
-
-  final PageController pageController =
-      PageController(viewportFraction: 0.88);
-
-  int currentPage = 0;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     fetchMatches();
+
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      fetchMatches(silent: true);
+    });
   }
 
-  Future<void> fetchMatches() async {
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> fetchMatches({bool silent = false}) async {
     try {
       final email = await SessionService.getEmail();
       if (email == null) return;
 
       final data = await ApiService.getMatches(email);
 
+      if (!mounted) return;
+
       setState(() {
         matches = data;
         loading = false;
       });
     } catch (e) {
-      setState(() => loading = false);
+      if (!silent) setState(() => loading = false);
     }
   }
 
   List filter(String type) {
     return matches.where((m) {
-      final status = (m["status"] ?? "").toString().toLowerCase();
+      final status = (m["status"] ?? "").toLowerCase();
       if (type == "live") return status == "live";
       if (type == "completed") return status == "completed";
-      return status == "upcoming";
+      return status == "scheduled" ||
+          status == "upcoming" ||
+          status == "not_started";
     }).toList();
   }
 
@@ -74,7 +76,6 @@ class _HomeScreenState extends State<HomeScreen> {
       length: 3,
       child: Scaffold(
         backgroundColor: AppColors.bg,
-
         appBar: AppBar(
           backgroundColor: Colors.white,
           elevation: 0,
@@ -83,15 +84,12 @@ class _HomeScreenState extends State<HomeScreen> {
             "RunBhoomi",
             style: TextStyle(
               color: AppColors.primary,
-              fontWeight: FontWeight.w800,
-              fontSize: 20,
+              fontWeight: FontWeight.bold,
             ),
           ),
           bottom: const TabBar(
             labelColor: AppColors.primary,
-            unselectedLabelColor: AppColors.textSecondary,
             indicatorColor: AppColors.accent,
-            indicatorWeight: 3,
             tabs: [
               Tab(text: "Live"),
               Tab(text: "Upcoming"),
@@ -99,80 +97,32 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
         ),
-
         body: loading
             ? const Center(child: CircularProgressIndicator())
             : TabBarView(
                 children: [
-                  _buildHorizontal(filter("live")),
-                  _buildHorizontal(filter("upcoming")),
-                  _buildHorizontal(filter("completed")),
+                  _buildList(filter("live")),
+                  _buildList(filter("scheduled")),
+                  _buildList(filter("completed")),
                 ],
               ),
       ),
     );
   }
 
-  ////////////////////////////////////////////////////////////
-  /// 🔥 HORIZONTAL CAROUSEL
-  ////////////////////////////////////////////////////////////
-
-  Widget _buildHorizontal(List list) {
-    if (list.isEmpty) {
-      return const Center(child: Text("No matches"));
-    }
-
-    return Column(
-      children: [
-        const SizedBox(height: 12),
-
-        SizedBox(
-          height: 185,
-          child: PageView.builder(
-            controller: pageController,
-            physics: const BouncingScrollPhysics(),
-            itemCount: list.length,
-            onPageChanged: (index) {
-              setState(() => currentPage = index);
-            },
-            itemBuilder: (context, index) {
-              return Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6),
-                child: MatchTile(match: list[index]),
-              );
-            },
-          ),
-        ),
-
-        const SizedBox(height: 8),
-
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(
-            list.length,
-            (index) => Container(
-              margin:
-                  const EdgeInsets.symmetric(horizontal: 3),
-              width: currentPage == index ? 8 : 6,
-              height: currentPage == index ? 8 : 6,
-              decoration: BoxDecoration(
-                color: currentPage == index
-                    ? AppColors.accent
-                    : Colors.grey.shade400,
-                shape: BoxShape.circle,
-              ),
+  Widget _buildList(List list) {
+    return RefreshIndicator(
+      onRefresh: fetchMatches,
+      child: list.isEmpty
+          ? const Center(child: Text("No matches"))
+          : ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: list.length,
+              itemBuilder: (_, i) => MatchTile(match: list[i]),
             ),
-          ),
-        ),
-      ],
     );
   }
 }
-
-////////////////////////////////////////////////////////////
-/// 🏏 MATCH TILE (PRODUCTION LEVEL)
-////////////////////////////////////////////////////////////
 
 class MatchTile extends StatefulWidget {
   final Map match;
@@ -184,55 +134,151 @@ class MatchTile extends StatefulWidget {
 
 class _MatchTileState extends State<MatchTile>
     with SingleTickerProviderStateMixin {
-  late AnimationController blinkController;
+  Timer? _timer;
+
+  String? scoreA;
+  String? scoreB;
+  String? overs;
+  String? result;
+  String? chase;
+  List lastOver = [];
+
+  late AnimationController _pulse;
+
+  bool get isLive =>
+      (widget.match["status"] ?? "").toLowerCase() == "live";
+
+  bool get isCompleted =>
+      (widget.match["status"] ?? "").toLowerCase() == "completed";
+
+  bool get isUpcoming {
+    final status = (widget.match["status"] ?? "").toLowerCase();
+    return status == "scheduled" ||
+        status == "upcoming" ||
+        status == "not_started";
+  }
 
   @override
   void initState() {
     super.initState();
-    blinkController = AnimationController(
+
+    _pulse = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 900),
+      lowerBound: 0.9,
+      upperBound: 1.1,
     )..repeat(reverse: true);
+
+    if (isLive) {
+      _load();
+      _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load());
+    }
+  }
+
+  Future<void> _load() async {
+    try {
+      final data = await ApiService.getLive(widget.match["id"]);
+
+      if (!mounted) return;
+
+      setState(() {
+        scoreA = data["scoreA"] ?? data["score"];
+        scoreB = data["scoreB"];
+        overs = data["overs"];
+        lastOver = data["lastOver"] ?? [];
+        result = data["result"];
+
+        if (data["target"] != null && scoreA != null) {
+          final runs = int.tryParse(scoreA!.split('/')[0]) ?? 0;
+          final target = data["target"];
+
+          final ballsBowled = _oversToBalls(overs ?? "0");
+          final totalBalls = (data["totalOvers"] ?? 20) * 6;
+          final ballsLeft = totalBalls - ballsBowled;
+
+          final runsNeeded = target - runs;
+
+          if (runsNeeded > 0 && ballsLeft > 0) {
+            final rrr =
+                (runsNeeded / (ballsLeft / 6)).toStringAsFixed(2);
+            chase =
+                "$runsNeeded needed • $ballsLeft balls • RRR $rrr";
+          }
+        }
+      });
+    } catch (_) {}
+  }
+
+  int _oversToBalls(String overs) {
+    if (!overs.contains('.')) return int.parse(overs) * 6;
+    final parts = overs.split('.');
+    return int.parse(parts[0]) * 6 + int.parse(parts[1]);
   }
 
   @override
   void dispose() {
-    blinkController.dispose();
+    _timer?.cancel();
+    _pulse.dispose();
     super.dispose();
+  }
+
+  Widget _buildBadge(String text, Color bg, Color textColor) {
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: textColor,
+          fontWeight: FontWeight.bold,
+          fontSize: 11,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final match = widget.match;
-    final isLive =
-        (match["status"] ?? "").toString().toLowerCase() == "live";
+    final m = widget.match;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
+    final teamA = m["teamA"] ?? "";
+    final teamB = m["teamB"] ?? "";
+
+    final sA = scoreA ?? m["scoreA"] ?? "";
+    final sB = scoreB ?? m["scoreB"] ?? "";
+    final ov = overs ?? m["overs"] ?? "";
+
+    return GestureDetector(
       onTap: () {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => MatchDetailScreen(),
+            builder: (_) => MatchDetailScreen(matchId: m["id"]),
           ),
         );
       },
-      child: Container(
-        padding: const EdgeInsets.all(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
+          gradient: const LinearGradient(
+            colors: [Colors.white, Color(0xFFF8FAFC)],
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
+              color: isLive
+                  ? Colors.red.withOpacity(0.15)
+                  : Colors.black.withOpacity(0.05),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
             )
           ],
-          border: Border.all(
-            color: isLive
-                ? AppColors.live.withOpacity(0.25)
-                : Colors.grey.shade200,
-          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,140 +289,179 @@ class _MatchTileState extends State<MatchTile>
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  match["league"] ?? "Match",
+                  m["tournament"] ?? "League Match",
                   style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                    color: Colors.grey,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                if (isLive)
-                  FadeTransition(
-                    opacity: blinkController,
-                    child: const Text(
-                      "LIVE",
-                      style: TextStyle(
-                        color: AppColors.live,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
-                      ),
-                    ),
-                  )
+
+                Row(
+                  children: [
+                    if (isLive)
+                      ScaleTransition(
+                        scale: _pulse,
+                        child: _buildBadge("LIVE", Colors.red, Colors.white),
+                      )
+                    else if (isCompleted)
+                      _buildBadge("COMPLETED",
+                          Colors.green.withOpacity(0.15), Colors.green)
+                    else if (isUpcoming)
+                      _buildBadge("UPCOMING",
+                          Colors.blue.withOpacity(0.12), Colors.blue),
+                  ],
+                )
               ],
             ),
 
+            const SizedBox(height: 14),
+
+            _teamRow(teamA, sA, ov, true, m["teamA_logo"]),
+            const SizedBox(height: 10),
+            _teamRow(teamB, sB, null, false, m["teamB_logo"]),
+
+            const SizedBox(height: 14),
+
+            if (chase != null)
+              Text(
+                chase!,
+                style: const TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+
+            if (lastOver.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(
+                  children: lastOver.map((b) {
+                    Color bg = Colors.grey.shade200;
+                    if (b == "W") bg = Colors.red;
+                    if (b == "4") bg = Colors.green;
+                    if (b == "6") bg = Colors.green.shade700;
+
+                    return Container(
+                      margin: const EdgeInsets.only(right: 6),
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        b.toString(),
+                        style: TextStyle(
+                          color: bg == Colors.grey.shade200
+                              ? Colors.black
+                              : Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+
             const SizedBox(height: 10),
 
-            _teamRow(match["teamA"], match["scoreA"],
-                match["teamA_logo"], true),
+            if (widget.match["note"] != null &&
+                widget.match["note"].toString().isNotEmpty)
+              Container(
+                margin: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline,
+                        size: 14, color: Colors.blue),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        widget.match["note"],
+                        style: const TextStyle(
+                          color: Color.fromARGB(255, 114, 4, 230),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
-            const SizedBox(height: 8),
-
-            _teamRow(match["teamB"], match["scoreB"],
-                match["teamB_logo"], false),
-
-            const SizedBox(height: 10),
-
-            Divider(color: Colors.grey.shade200),
-
-            const SizedBox(height: 6),
-            _commentaryBar(match["note"] ?? "")
+            if (result != null)
+              Text(
+                result!,
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _commentaryBar(String text) {
-  if (text.isEmpty) return const SizedBox();
-
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(
-      color: const Color(0xFFFFF59D), // light yellow
-      borderRadius: BorderRadius.circular(6),
-    ),
-    child: Row(
-      children: [
-        const Icon(Icons.campaign, size: 14, color: Colors.black87),
-        const SizedBox(width: 6),
-
-        Expanded(
-          child: Text(
-            text,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: Colors.black87,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-  ////////////////////////////////////////////////////////////
-  /// TEAM ROW
-  ////////////////////////////////////////////////////////////
-
   Widget _teamRow(
-      String? name, String? score, String? logo, bool bold) {
+      String name, String? score, String? overs, bool highlight, String? logo) {
+    final displayScore =
+        (score == null || score == "") ? "Yet to bat" : score;
+         final alreadyHasOvers = displayScore.contains("(");
+
     return Row(
       children: [
-        _logo(logo, name),
-        const SizedBox(width: 10),
-
+        logo != null && logo.isNotEmpty
+            ? CircleAvatar(
+                radius: 16,
+                backgroundImage: NetworkImage(logo),
+                backgroundColor: Colors.white,
+              )
+            : CircleAvatar(
+                radius: 16,
+                backgroundColor: Colors.grey.shade200,
+                child: Text(name.isNotEmpty ? name[0] : "T"),
+              ),
+        const SizedBox(width: 12),
         Expanded(
           child: Text(
-            name ?? "",
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            name,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 15,
               fontWeight:
-                  bold ? FontWeight.w700 : FontWeight.w500,
-              color: AppColors.textPrimary,
+                  highlight ? FontWeight.bold : FontWeight.w500,
             ),
           ),
         ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              displayScore,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 17),
+                  overflow: TextOverflow.ellipsis, 
+            ),
+           
 
-        Text(
-          score ?? "",
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w800,
-            color: AppColors.primary,
-          ),
+if (!alreadyHasOvers && overs != null && overs.isNotEmpty)
+  Text(
+    "($overs)",
+    textAlign: TextAlign.right,
+    style: const TextStyle(
+      fontSize: 11,
+      color: Colors.grey,
+    ),
+  ),
+          ],
         ),
       ],
-    );
-  }
-
-  ////////////////////////////////////////////////////////////
-  /// LOGO
-  ////////////////////////////////////////////////////////////
-
-  Widget _logo(String? logo, String? name) {
-    if (logo != null && logo.isNotEmpty) {
-      return CircleAvatar(
-        radius: 14,
-        backgroundImage: NetworkImage(logo),
-      );
-    }
-
-    return CircleAvatar(
-      radius: 14,
-      backgroundColor: AppColors.accent.withOpacity(0.1),
-      child: Text(
-        (name ?? "T")[0],
-        style: const TextStyle(
-          color: AppColors.accent,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
     );
   }
 }
