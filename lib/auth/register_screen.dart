@@ -35,6 +35,9 @@ class _RegisterFlowState extends State<RegisterFlow> {
   String? role;
   String? battingStyle;
   String? bowlingStyle;
+  bool _disposed = false;
+
+  final List<Timer> _delayedTimers = [];
 
   double? lat;
   double? lng;
@@ -52,19 +55,27 @@ class _RegisterFlowState extends State<RegisterFlow> {
   Timer? otpTimer;
 
   /// ================= TIMER =================
-  void startTimer() {
-    timer = 30;
-    otpTimer?.cancel();
+void startTimer() {
+  otpTimer?.cancel();
 
-    otpTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (timer == 0) {
-        t.cancel();
-      } else {
-        setState(() => timer--);
-      }
-    });
-  }
+  if (!mounted || _disposed) return;
 
+  setState(() => timer = 30);
+
+  otpTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+    if (!mounted || _disposed) {
+      t.cancel();
+      return;
+    }
+
+    if (timer <= 1) {
+      t.cancel();
+      setState(() => timer = 0);
+    } else {
+      setState(() => timer--);
+    }
+  });
+}
   String getOtp() => otp.map((e) => e.text).join();
 
   /// ================= IMAGE =================
@@ -231,7 +242,7 @@ Widget otpStep() {
 
       const SizedBox(height: 20),
 
-      /// 🔴 COUNTDOWN PROGRESS LINE
+      /// COUNTDOWN
       LinearProgressIndicator(
         value: timer / 30,
         minHeight: 4,
@@ -253,8 +264,7 @@ Widget otpStep() {
 
           return SizedBox(
             width: 45,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
+            child: Container( 
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: isFocused
@@ -274,7 +284,9 @@ Widget otpStep() {
                     i == 5 ? TextInputAction.done : TextInputAction.next,
 
                 onChanged: (v) {
-                  setState(() {}); // 🔥 refresh button color
+                  if (!mounted) return; // ✅ SAFE
+
+                  setState(() {});
 
                   if (v.isNotEmpty) {
                     if (i < 5) {
@@ -338,9 +350,8 @@ Widget otpStep() {
 
       const SizedBox(height: 25),
 
-      /// VERIFY BUTTON (COLOR CHANGE)
-      AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
+      /// VERIFY BUTTON
+      Container( 
         width: double.infinity,
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(
@@ -362,6 +373,7 @@ Widget otpStep() {
 
 
 
+
 void nextStep() {
   if (step < 10) { 
     setState(() {
@@ -373,22 +385,20 @@ void nextStep() {
 String selectedGender = "";
 
 
+
 Widget genderCard(String label, IconData icon) {
   final isSelected = selectedGender == label;
 
   return GestureDetector(
     onTap: () {
+      if (!mounted) return; // ✅ safety
+
       setState(() {
         selectedGender = label;
-
-        // IMPORTANT: also store in main variable
-        gender = label; // 🔥 YOU MISSED THIS
+        gender = label;
       });
     },
-
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOut,
+    child: Container( 
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(
         gradient: isSelected
@@ -411,9 +421,8 @@ Widget genderCard(String label, IconData icon) {
           color: isSelected ? Colors.transparent : Colors.grey.shade300,
         ),
       ),
-      child: AnimatedScale(
+      child: Transform.scale( 
         scale: isSelected ? 1.05 : 1.0,
-        duration: const Duration(milliseconds: 200),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -889,22 +898,46 @@ Widget playerStep() {
     
     }
 
-   return Scaffold(
-  body: AnimatedSwitcher(
-    duration: const Duration(milliseconds: 400),
-    child: Container(
-      key: ValueKey(step),
-      child: screen,
-    ),
+
+return Scaffold(
+  body: Container(
+    key: ValueKey(step),
+    child: screen,
   ),
 );
   }
 
-  @override
-  void dispose() {
-    otpTimer?.cancel();
-    super.dispose();
+
+
+
+
+@override
+void dispose() {
+  _disposed = true;
+
+  otpTimer?.cancel();
+
+  for (var c in otp) {
+    c.dispose();
   }
+
+  for (var f in focusNodes) {
+    f.dispose();
+  }
+
+  for (var t in _delayedTimers) {
+    t.cancel();
+  }
+
+  // ✅ Dispose all controllers BEFORE super
+  nameController.dispose();
+  cityController.dispose();
+  passwordController.dispose();
+  confirmPasswordController.dispose();
+  phoneController.dispose();
+
+  super.dispose(); // ✅ ONLY ONCE, ALWAYS LAST
+}
   
   Widget buildRule(String text, bool valid) {
   return Row(
@@ -924,4 +957,6 @@ Widget playerStep() {
     ],
   );
 }
+
+
 }

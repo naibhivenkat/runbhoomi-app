@@ -1,186 +1,55 @@
-// import 'package:flutter/material.dart';
-// import '../../../services/api_service.dart';
-// import 'match_setup_screen.dart';
-
-
-// class MatchesTab extends StatefulWidget {
-//   final int tournamentId;
-
-//   const MatchesTab({super.key, required this.tournamentId});
-
-//   @override
-//   State<MatchesTab> createState() => _MatchesTabState();
-// }
-
-// class _MatchesTabState extends State<MatchesTab> {
-//   List matches = [];
-//   bool isLoading = true;
-
-//   @override
-//   void initState() {
-//     super.initState();
-//     loadMatches();
-//   }
-
-//   Future<void> loadMatches() async {
-//     try {
-//       final data =
-//           await ApiService.getTournamentMatches(widget.tournamentId);
-
-//       if (!mounted) return;
-
-//       setState(() {
-//         matches = data;
-//         isLoading = false;
-//       });
-//     } catch (e) {
-//       if (!mounted) return;
-
-//       setState(() => isLoading = false);
-
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(content: Text("Failed to load matches")),
-//       );
-//     }
-//   }
-
-// Future<void> generateFixtures() async {
-//   try {
-//     await ApiService.generateFixtures(widget.tournamentId);
-//     loadMatches();
-//   } catch (e) {
-
-//     // ✅ HANDLE 400 ERROR
-//     ScaffoldMessenger.of(context).showSnackBar(
-//       const SnackBar(content: Text("Fixtures already generated")),
-//     );
-//   }
-// }
-
-
-// Future<void> openMatchSetup(Map m) async {
-//   try {
-//     final res =
-//         await ApiService.initMatchFromFixture(m["id"]);
-
-//     final matchId = res["match_id"];
-
-//     // ✅ SAFETY FIX
-//     if (matchId == null) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(content: Text("Match not initialized")),
-//       );
-//       return;
-//     }
-
-//     if (!mounted) return;
-
-//     Navigator.push(
-//       context,
-//       MaterialPageRoute(
-//         builder: (_) => MatchSetupScreen(
-//           matchId: matchId,
-
-//           // ✅ SAFE IDs
-//           teamAId: m["team_a_id"] ?? 0,
-//           teamBId: m["team_b_id"] ?? 0,
-
-//           // ✅ SAFE names
-//           teamAName: m["team_a"] ?? "Team A",
-//           teamBName: m["team_b"] ?? "Team B",
-//         ),
-//       ),
-//     );
-//   } catch (e) {
-//     debugPrint("Error opening setup: $e");
-
-//     ScaffoldMessenger.of(context).showSnackBar(
-//       const SnackBar(content: Text("Failed to open match setup")),
-//     );
-//   }
-// }
-
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Column(
-//       children: [
-
-//         /// 🔥 BUTTON
-//         Padding(
-//           padding: const EdgeInsets.all(10),
-//           child: ElevatedButton(
-//             onPressed: generateFixtures,
-//             child: const Text("Generate Fixtures"),
-//           ),
-//         ),
-
-//         /// 🔥 LIST
-//         Expanded(
-//           child: isLoading
-//               ? const Center(child: CircularProgressIndicator())
-//               : matches.isEmpty
-//                   ? const Center(
-//                       child: Text(
-//                         "No matches yet",
-//                         style: TextStyle(color: Colors.grey),
-//                       ),
-//                     )
-//                   : ListView.builder(
-//                       itemCount: matches.length,
-//                       itemBuilder: (_, i) {
-//                         final m = matches[i];
-
-//                         return Card(
-//                           margin: const EdgeInsets.all(10),
-//                           child: ListTile(
-//                             title: Text(
-//                               "${m["team_a"]} vs ${m["team_b"]}",
-//                             ),
-//                             subtitle: Text(m["stage"] ?? ""),
-
-//                             // ✅ TAP → SETUP FLOW
-//                             onTap: () => openMatchSetup(m),
-
-//                             trailing: m["winner"] != null
-//                                 ? Text(
-//                                     "Winner: ${m["winner"]}",
-//                                     style: const TextStyle(
-//                                       color: Colors.green,
-//                                     ),
-//                                   )
-//                                 : const Text("Upcoming"),
-//                           ),
-//                         );
-//                       },
-//                     ),
-//         ),
-//       ],
-//     );
-//   }
-// }
-
-
-
 import 'package:flutter/material.dart';
 import '../../../services/api_service.dart';
+import '../tournament/group_setup_screen.dart';
 import 'match_setup_screen.dart';
+
+// ✅ ADD THESE
+import '../match/scoring_screen.dart';
+import '../match/match_detail_screen.dart';
+
+enum SortType { time, group, teams, status }
 
 class MatchesTab extends StatefulWidget {
   final int tournamentId;
+  final String role;
 
-  const MatchesTab({super.key, required this.tournamentId});
+  const MatchesTab({
+    super.key,
+    required this.tournamentId,
+    required this.role,
+  });
 
   @override
   State<MatchesTab> createState() => _MatchesTabState();
 }
 
 class _MatchesTabState extends State<MatchesTab> {
+  bool _disposed = false;
   List matches = [];
   bool isLoading = true;
 
-  // ✅ NEW: track if fixtures exist
-  bool fixturesGenerated = false;
+  bool hasLive = false;
+  bool hasCompleted = false;
+  bool hasUpcoming = false;
+
+  Map<int, String> groupNames = {};
+  SortType selectedSort = SortType.time;
+
+  final List<Color> groupColorPool = [
+    Colors.blue,
+    Colors.green,
+    Colors.orange,
+    Colors.purple,
+    Colors.red,
+    Colors.teal,
+    Colors.indigo,
+    Colors.brown,
+  ];
+
+  Color getGroupColor(String groupName) {
+    final index = groupName.hashCode % groupColorPool.length;
+    return groupColorPool[index.abs()];
+  }
 
   @override
   void initState() {
@@ -188,156 +57,273 @@ class _MatchesTabState extends State<MatchesTab> {
     loadMatches();
   }
 
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   Future<void> loadMatches() async {
     try {
       final data =
           await ApiService.getTournamentMatches(widget.tournamentId);
 
-      if (!mounted) return;
+      if (!mounted || _disposed) return;
+
+      final groups =
+          await ApiService.getGroups(widget.tournamentId);
+
+      if (!mounted || _disposed) return;
+
+      bool live = false;
+      bool completed = false;
+      bool upcoming = false;
+
+      for (var m in data) {
+        if (m["is_live"] == true) live = true;
+        if (m["winner"] != null) completed = true;
+        if (m["winner"] == null && m["is_live"] != true) upcoming = true;
+      }
+
+      if (!mounted || _disposed) return;
 
       setState(() {
         matches = data;
         isLoading = false;
+        hasLive = live;
+        hasCompleted = completed;
+        hasUpcoming = upcoming;
 
-        // ✅ FIX: detect if fixtures exist
-        fixturesGenerated = data.isNotEmpty;
+        groupNames = {
+          for (var g in groups) g["id"]: g["name"]
+        };
       });
     } catch (e) {
-      if (!mounted) return;
-
+      if (!mounted || _disposed) return;
       setState(() => isLoading = false);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Failed to load matches")),
-      );
     }
   }
 
-  // ✅ GENERATE FIXTURES
   Future<void> generateFixtures() async {
-    try {
-      await ApiService.generateFixtures(widget.tournamentId);
-
-      // reload matches
-      await loadMatches();
-
+    if (hasLive || hasCompleted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Fixtures generated")),
+        const SnackBar(content: Text("Tournament already started")),
       );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Fixtures already generated")),
-      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GroupSetupScreen(
+          tournamentId: widget.tournamentId,
+          totalTeams: matches.length,
+        ),
+      ),
+    );
+  }
+
+  Future<void> openMatchSetup(Map m) async {
+    final res = await ApiService.initMatchFromFixture(m["id"]);
+    final matchId = res["match_id"];
+
+    if (matchId == null) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MatchSetupScreen(
+          matchId: matchId,
+          teamAId: m["team_a_id"] ?? 0,
+          teamBId: m["team_b_id"] ?? 0,
+          teamAName: m["team_a"] ?? "Team A",
+          teamBName: m["team_b"] ?? "Team B",
+          tournamentId: widget.tournamentId,
+        ),
+      ),
+    );
+  }
+
+  String getStatus(Map m) {
+    if (m["winner"] != null) return "COMPLETED";
+    if (m["is_live"] == true) return "LIVE";
+    return "UPCOMING";
+  }
+
+  Color getStatusColor(String status) {
+    switch (status) {
+      case "LIVE":
+        return Colors.red;
+      case "COMPLETED":
+        return Colors.grey;
+      default:
+        return Colors.orange;
     }
   }
 
-  // ✅ OPEN MATCH SETUP
-  Future<void> openMatchSetup(Map m) async {
-    try {
-      final res =
-          await ApiService.initMatchFromFixture(m["id"]);
+  List getSortedMatchesByType() {
+    List list = List.from(matches);
 
-      final matchId = res["match_id"];
+    switch (selectedSort) {
+      case SortType.time:
+        list.sort((a, b) {
+          final aLive = a["is_live"] == true;
+          final bLive = b["is_live"] == true;
 
-      if (matchId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Match not initialized")),
-        );
-        return;
-      }
+          if (aLive && !bLive) return -1;
+          if (!aLive && bLive) return 1;
+          return 0;
+        });
+        break;
 
-      if (!mounted) return;
+      case SortType.group:
+        list.sort((a, b) {
+          final g1 = groupNames[a["group_id"]] ?? "";
+          final g2 = groupNames[b["group_id"]] ?? "";
+          return g1.compareTo(g2);
+        });
+        break;
 
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => MatchSetupScreen(
-            matchId: matchId,
-            teamAId: m["team_a_id"] ?? 0,
-            teamBId: m["team_b_id"] ?? 0,
-            teamAName: m["team_a"] ?? "Team A",
-            teamBName: m["team_b"] ?? "Team B",
-          ),
-        ),
-      );
-    } catch (e) {
-      debugPrint("Error opening setup: $e");
+      case SortType.teams:
+        list.sort((a, b) {
+          final t1 = (a["team_a"] ?? "") + (a["team_b"] ?? "");
+          final t2 = (b["team_a"] ?? "") + (b["team_b"] ?? "");
+          return t1.compareTo(t2);
+        });
+        break;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Failed to open match setup")),
-      );
+      case SortType.status:
+        list.sort((a, b) {
+          int rank(String s) {
+            if (s == "LIVE") return 0;
+            if (s == "UPCOMING") return 1;
+            return 2;
+          }
+          return rank(getStatus(a)).compareTo(rank(getStatus(b)));
+        });
+        break;
     }
+
+    return list;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
+    final sorted = getSortedMatchesByType();
 
-        /// 🔥 SHOW BUTTON ONLY IF NO FIXTURES
-        if (!fixturesGenerated)
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: ElevatedButton(
-              onPressed: generateFixtures,
-              child: const Text("Generate Fixtures"),
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (matches.isEmpty) {
+      return const Center(child: Text("No Fixtures"));
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: sorted.length,
+      itemBuilder: (_, i) => _buildMatch(sorted[i]),
+    );
+  }
+
+  Widget _buildMatch(Map m) {
+    final status = getStatus(m);
+    final isAdmin = widget.role == "ADMIN";
+    final isLive = status == "LIVE";
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+
+      // 🔥 FULLY FIXED NAVIGATION
+      onTap: () {
+        final matchId = m["match_id"] ?? m["id"];
+
+        if (isAdmin) {
+          if (status == "UPCOMING") {
+            openMatchSetup(m);
+          } else if (status == "LIVE") {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ScoringScreen(matchId: matchId),
+              ),
+            );
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MatchDetailScreen(
+                  matchId: matchId,
+                  isAdmin: false,
+                ),
+              ),
+            );
+          }
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => MatchDetailScreen(
+                matchId: matchId,
+                isAdmin: false,
+              ),
             ),
-          ),
+          );
+        }
+      },
 
-        /// 🔥 MATCH LIST
-        Expanded(
-          child: isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : matches.isEmpty
-                  ? const Center(
-                      child: Text(
-                        "No matches yet",
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: matches.length,
-                      itemBuilder: (_, i) {
-                        final m = matches[i];
-
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: ListTile(
-                            title: Text(
-                              "${m["team_a"]} vs ${m["team_b"]}",
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold),
-                            ),
-
-                            subtitle: Text(
-                              m["stage"] ?? "Match",
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-
-                            onTap: () => openMatchSetup(m),
-
-                            trailing: m["winner"] != null
-                                ? Text(
-                                    "Winner: ${m["winner"]}",
-                                    style: const TextStyle(
-                                      color: Colors.green,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  )
-                                : const Text(
-                                    "Upcoming",
-                                    style: TextStyle(color: Colors.orange),
-                                  ),
-                          ),
-                        );
-                      },
-                    ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 14),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
         ),
-      ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Match #${m["id"]}"),
+                Text(
+                  status,
+                  style: TextStyle(
+                    color: getStatusColor(status),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(child: Text(m["team_a"])),
+                const Text(" vs "),
+                Expanded(
+                  child: Text(
+                    m["team_b"],
+                    textAlign: TextAlign.end,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (isLive)
+              const Text(
+                "LIVE",
+                style: TextStyle(color: Colors.red),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

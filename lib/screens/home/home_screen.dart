@@ -1,16 +1,17 @@
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../services/session_service.dart';
 import '../match/match_detail_screen.dart';
+import '../match/match_setup_screen.dart';
+import '../match/scoring_screen.dart';
 
 class AppColors {
   static const primary = Color(0xFF0F172A);
   static const accent = Color(0xFF16A34A);
   static const live = Color(0xFFDC2626);
   static const bg = Color(0xFFF1F5F9);
-  static const textPrimary = Color(0xFF111827);
-  static const textSecondary = Color(0xFF6B7280);
 }
 
 class HomeScreen extends StatefulWidget {
@@ -24,19 +25,25 @@ class _HomeScreenState extends State<HomeScreen> {
   List matches = [];
   bool loading = true;
   Timer? _timer;
+  bool _disposed = false;
 
   @override
   void initState() {
     super.initState();
     fetchMatches();
 
-    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 5), (t) {
+      if (!mounted || _disposed) {
+        t.cancel();
+        return;
+      }
       fetchMatches(silent: true);
     });
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
     super.dispose();
   }
@@ -46,15 +53,16 @@ class _HomeScreenState extends State<HomeScreen> {
       final email = await SessionService.getEmail();
       if (email == null) return;
 
-      final data = await ApiService.getMatches(email);
+      final data = await ApiService.getMatchesByUser(email);
 
-      if (!mounted) return;
+      if (!mounted || _disposed) return;
 
       setState(() {
         matches = data;
         loading = false;
       });
-    } catch (e) {
+    } catch (_) {
+      if (!mounted || _disposed) return;
       if (!silent) setState(() => loading = false);
     }
   }
@@ -100,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
         body: loading
             ? const Center(child: CircularProgressIndicator())
             : TabBarView(
+                physics: const NeverScrollableScrollPhysics(),
                 children: [
                   _buildList(filter("live")),
                   _buildList(filter("scheduled")),
@@ -114,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return RefreshIndicator(
       onRefresh: fetchMatches,
       child: list.isEmpty
-          ? const Center(child: Text("No matches"))
+          ? const Center(child: Text("🏏 No matches yet"))
           : ListView.builder(
               padding: const EdgeInsets.all(12),
               itemCount: list.length,
@@ -132,113 +141,100 @@ class MatchTile extends StatefulWidget {
   State<MatchTile> createState() => _MatchTileState();
 }
 
-class _MatchTileState extends State<MatchTile>
-    with SingleTickerProviderStateMixin {
+class _MatchTileState extends State<MatchTile> {
   Timer? _timer;
+  bool _disposed = false;
 
-  String? scoreA;
-  String? scoreB;
+  String? score;
   String? overs;
-  String? result;
-  String? chase;
   List lastOver = [];
 
-  late AnimationController _pulse;
-
+  bool get isAdmin => widget.match["is_admin"] == true;
   bool get isLive =>
       (widget.match["status"] ?? "").toLowerCase() == "live";
-
   bool get isCompleted =>
       (widget.match["status"] ?? "").toLowerCase() == "completed";
-
-  bool get isUpcoming {
-    final status = (widget.match["status"] ?? "").toLowerCase();
-    return status == "scheduled" ||
-        status == "upcoming" ||
-        status == "not_started";
-  }
+  bool get isUpcoming =>
+      (widget.match["status"] ?? "").toLowerCase() != "live" &&
+      !isCompleted;
 
   @override
   void initState() {
     super.initState();
 
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-      lowerBound: 0.9,
-      upperBound: 1.1,
-    )..repeat(reverse: true);
-
     if (isLive) {
       _load();
-      _timer = Timer.periodic(const Duration(seconds: 3), (_) => _load());
+      _timer = Timer.periodic(
+        const Duration(seconds: 3),
+        (_) => _load(),
+      );
     }
-  }
-
-  Future<void> _load() async {
-    try {
-      final data = await ApiService.getLive(widget.match["id"]);
-
-      if (!mounted) return;
-
-      setState(() {
-        scoreA = data["scoreA"] ?? data["score"];
-        scoreB = data["scoreB"];
-        overs = data["overs"];
-        lastOver = data["lastOver"] ?? [];
-        result = data["result"];
-
-        if (data["target"] != null && scoreA != null) {
-          final runs = int.tryParse(scoreA!.split('/')[0]) ?? 0;
-          final target = data["target"];
-
-          final ballsBowled = _oversToBalls(overs ?? "0");
-          final totalBalls = (data["totalOvers"] ?? 20) * 6;
-          final ballsLeft = totalBalls - ballsBowled;
-
-          final runsNeeded = target - runs;
-
-          if (runsNeeded > 0 && ballsLeft > 0) {
-            final rrr =
-                (runsNeeded / (ballsLeft / 6)).toStringAsFixed(2);
-            chase =
-                "$runsNeeded needed • $ballsLeft balls • RRR $rrr";
-          }
-        }
-      });
-    } catch (_) {}
-  }
-
-  int _oversToBalls(String overs) {
-    if (!overs.contains('.')) return int.parse(overs) * 6;
-    final parts = overs.split('.');
-    return int.parse(parts[0]) * 6 + int.parse(parts[1]);
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _timer?.cancel();
-    _pulse.dispose();
     super.dispose();
   }
 
-  Widget _buildBadge(String text, Color bg, Color textColor) {
-    return Container(
-      margin: const EdgeInsets.only(left: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: textColor,
-          fontWeight: FontWeight.bold,
-          fontSize: 11,
+Future<void> _load() async {
+  try {
+    final data = await ApiService.getLive(widget.match["id"]);
+
+    if (!mounted || _disposed) return;
+
+    setState(() {
+      score = data["score"];
+      overs = data["overs"];
+      lastOver = data["last_over"] ?? [];
+
+      /// 🔥 NEW
+      runRate = data["run_rate"];
+    });
+  } catch (_) {}
+}
+
+double? runRate;
+
+
+  void _handleTap() {
+    final m = widget.match;
+
+    if (isAdmin) {
+      if (isUpcoming) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MatchSetupScreen(
+              matchId: m["id"],
+              teamAId: m["teamA_id"],
+              teamBId: m["teamB_id"],
+              teamAName: m["teamA"],
+              teamBName: m["teamB"],
+              tournamentId: m["tournament_id"],
+            ),
+          ),
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ScoringScreen(matchId: m["id"]),
+          ),
+        );
+      }
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => MatchDetailScreen(
+            matchId: m["id"],
+            isAdmin: false,
+          ),
         ),
-      ),
-    );
+      );
+    }
   }
 
   @override
@@ -248,34 +244,23 @@ class _MatchTileState extends State<MatchTile>
     final teamA = m["teamA"] ?? "";
     final teamB = m["teamB"] ?? "";
 
-    final sA = scoreA ?? m["scoreA"] ?? "";
-    final sB = scoreB ?? m["scoreB"] ?? "";
-    final ov = overs ?? m["overs"] ?? "";
+    final displayScore = score ?? m["scoreA"] ?? "";
+    final displayOvers = overs ?? m["overs"] ?? "";
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => MatchDetailScreen(matchId: m["id"]),
-          ),
-        );
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
+      onTap: _handleTap,
+      child: Container(
         margin: const EdgeInsets.only(bottom: 14),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          gradient: const LinearGradient(
-            colors: [Colors.white, Color(0xFFF8FAFC)],
-          ),
+          borderRadius: BorderRadius.circular(18),
+          color: Colors.white,
           boxShadow: [
             BoxShadow(
               color: isLive
-                  ? Colors.red.withOpacity(0.15)
-                  : Colors.black.withOpacity(0.05),
-              blurRadius: 14,
+                  ? Colors.red.withOpacity(0.12)
+                  : Colors.black.withOpacity(0.06),
+              blurRadius: 12,
               offset: const Offset(0, 6),
             )
           ],
@@ -291,72 +276,92 @@ class _MatchTileState extends State<MatchTile>
                 Text(
                   m["tournament"] ?? "League Match",
                   style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                      fontSize: 12, color: Colors.grey),
                 ),
-
-                Row(
-                  children: [
-                    if (isLive)
-                      ScaleTransition(
-                        scale: _pulse,
-                        child: _buildBadge("LIVE", Colors.red, Colors.white),
-                      )
-                    else if (isCompleted)
-                      _buildBadge("COMPLETED",
-                          Colors.green.withOpacity(0.15), Colors.green)
-                    else if (isUpcoming)
-                      _buildBadge("UPCOMING",
-                          Colors.blue.withOpacity(0.12), Colors.blue),
-                  ],
-                )
+                _badge(
+                  isLive
+                      ? "LIVE"
+                      : isCompleted
+                          ? "DONE"
+                          : "UPCOMING",
+                  isLive
+                      ? Colors.red
+                      : isCompleted
+                          ? Colors.green
+                          : Colors.blue,
+                ),
               ],
             ),
 
             const SizedBox(height: 14),
 
-            _teamRow(teamA, sA, ov, true, m["teamA_logo"]),
-            const SizedBox(height: 10),
-            _teamRow(teamB, sB, null, false, m["teamB_logo"]),
-
-            const SizedBox(height: 14),
-
-            if (chase != null)
-              Text(
-                chase!,
-                style: const TextStyle(
-                  color: Colors.orange,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 13,
+            /// TEAM A
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(teamA,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      displayScore.isEmpty ? "Yet to bat" : displayScore,
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (displayOvers.isNotEmpty)
+                      Text(
+                        "($displayOvers)",
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.grey),
+                      ),
+                  ],
                 ),
-              ),
+              ],
+            ),
 
+            const SizedBox(height: 8),
+
+            /// TEAM B
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(teamB,
+                    style: const TextStyle(color: Colors.grey)),
+                const Text("Yet to bat"),
+              ],
+            ),
+
+
+
+            const SizedBox(height: 10),
+            _statusBar(),
+
+            /// LAST OVER
             if (lastOver.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Row(
-                  children: lastOver.map((b) {
-                    Color bg = Colors.grey.shade200;
-                    if (b == "W") bg = Colors.red;
-                    if (b == "4") bg = Colors.green;
-                    if (b == "6") bg = Colors.green.shade700;
-
+                padding: const EdgeInsets.only(top: 10),
+                child: Wrap(
+                  spacing: 6,
+                  children: lastOver.map<Widget>((e) {
                     return Container(
-                      margin: const EdgeInsets.only(right: 6),
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: bg,
-                        borderRadius: BorderRadius.circular(8),
+                        color: e == "W"
+                            ? Colors.red.shade100
+                            : Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        b.toString(),
+                        e.toString(),
                         style: TextStyle(
-                          color: bg == Colors.grey.shade200
-                              ? Colors.black
-                              : Colors.white,
                           fontWeight: FontWeight.bold,
+                          color:
+                              e == "W" ? Colors.red : Colors.black,
                         ),
                       ),
                     );
@@ -364,104 +369,242 @@ class _MatchTileState extends State<MatchTile>
                 ),
               ),
 
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
 
-            if (widget.match["note"] != null &&
-                widget.match["note"].toString().isNotEmpty)
-              Container(
-                margin: const EdgeInsets.only(top: 6),
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.info_outline,
-                        size: 14, color: Colors.blue),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        widget.match["note"],
-                        style: const TextStyle(
-                          color: Color.fromARGB(255, 114, 4, 230),
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+            /// ACTION BUTTON
+            if (isAdmin && (isLive || isUpcoming))
+              InkWell(
+                onTap: _handleTap,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF16A34A), Color(0xFF22C55E)],
                     ),
-                  ],
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    isLive ? "Continue Scoring" : "Start Match",
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
 
-            if (result != null)
-              Text(
-                result!,
-                style: const TextStyle(
-                  color: Colors.green,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+if (!isAdmin) ...[
+  if (isUpcoming)
+    Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.orange.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Text(
+        "Waiting to start match",
+        style: TextStyle(
+          color: Colors.orange,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ),
+
+  if (isLive)
+    Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.green.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Text(
+        "Match is live",
+        style: TextStyle(
+          color: Colors.green,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ),
+],
           ],
         ),
       ),
     );
   }
 
-  Widget _teamRow(
-      String name, String? score, String? overs, bool highlight, String? logo) {
-    final displayScore =
-        (score == null || score == "") ? "Yet to bat" : score;
-         final alreadyHasOvers = displayScore.contains("(");
-
-    return Row(
-      children: [
-        logo != null && logo.isNotEmpty
-            ? CircleAvatar(
-                radius: 16,
-                backgroundImage: NetworkImage(logo),
-                backgroundColor: Colors.white,
-              )
-            : CircleAvatar(
-                radius: 16,
-                backgroundColor: Colors.grey.shade200,
-                child: Text(name.isNotEmpty ? name[0] : "T"),
-              ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            name,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight:
-                  highlight ? FontWeight.bold : FontWeight.w500,
-            ),
-          ),
+  Widget _badge(String text, Color color) {
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 11,
         ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              displayScore,
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, fontSize: 17),
-                  overflow: TextOverflow.ellipsis, 
-            ),
-           
-
-if (!alreadyHasOvers && overs != null && overs.isNotEmpty)
-  Text(
-    "($overs)",
-    textAlign: TextAlign.right,
-    style: const TextStyle(
-      fontSize: 11,
-      color: Colors.grey,
-    ),
-  ),
-          ],
-        ),
-      ],
+      ),
     );
   }
+
+
+Widget _statusBar() {
+  /// ================= UPCOMING =================
+  if (isUpcoming) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: const [
+          Icon(Icons.schedule, size: 16, color: Colors.orange),
+          SizedBox(width: 8),
+          Text(
+            "Match yet to begin",
+            style: TextStyle(
+              color: Colors.orange,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ================= LIVE =================
+  if (isLive) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+
+          /// 🔴 LIVE HEADER
+          Row(
+            children: [
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.3, end: 1),
+                duration: const Duration(milliseconds: 800),
+                builder: (_, value, child) =>
+                    Opacity(opacity: value, child: child),
+                onEnd: () => setState(() {}),
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text(
+                "LIVE",
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const Spacer(),
+
+              if (overs != null)
+                Text(
+                  "$overs ov",
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                ),
+
+              const SizedBox(width: 10),
+
+              if (runRate != null)
+                Text(
+                  "CRR ${runRate!.toStringAsFixed(2)}",
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                ),
+            ],
+          ),
+
+          const SizedBox(height: 6),
+
+          /// ⚡ LAST OVER (INLINE)
+          if (lastOver.isNotEmpty)
+            Wrap(
+              spacing: 6,
+              children: lastOver.map<Widget>((e) {
+                final isWicket = e == "W";
+
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isWicket
+                        ? Colors.red.withOpacity(0.2)
+                        : Colors.grey.shade200,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    e.toString(),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isWicket ? Colors.red : Colors.black,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// ================= COMPLETED =================
+  if (isCompleted) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle, size: 16, color: Colors.green),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              widget.match["note"] ?? "Match completed",
+              style: const TextStyle(
+                color: Colors.green,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  return const SizedBox();
+}
 }

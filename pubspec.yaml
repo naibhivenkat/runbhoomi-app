@@ -1,3 +1,45 @@
+# name: runbhoomi_app
+# description: RunBhoomi cricket scoring app
+# publish_to: "none"
+
+# version: 0.1.0+1
+
+# environment:
+#   sdk: ">=3.0.0 <4.0.0"
+
+# dependencies:
+#   flutter: 
+#     sdk: flutter 
+
+#   http: ^1.2.0
+#   provider: ^6.0.5
+#   web_socket_channel: ^2.4.0
+#   shared_preferences: ^2.2.2
+#   hive: ^2.2.3
+#   hive_flutter: ^1.1.0
+#   google_sign_in: ^6.2.1
+#   flutter_secure_storage: ^9.2.4
+#   google_maps_flutter:  ^2.2.0
+#   geocoding: ^2.1.1
+#   permission_handler: ^10.4.0
+#   geolocator: ^9.0.2
+#   image_picker: ^1.0.8
+#   flutter_image_compress: ^2.1.0
+#   sms_autofill: ^2.3.0
+#   intl: ^0.20.2
+
+# dev_dependencies:
+#   flutter_test:
+#     sdk: flutter
+#   flutter_lints: ^3.0.0
+
+# flutter:
+#   uses-material-design: true
+
+
+
+
+
 name: runbhoomi_app
 description: RunBhoomi cricket scoring app
 publish_to: "none"
@@ -11,10 +53,20 @@ dependencies:
   flutter: 
     sdk: flutter 
 
+  # Core
   http: ^1.2.0
   provider: ^6.0.5
-  web_socket_channel: ^2.4.0
   shared_preferences: ^2.2.2
+  
+  # Offline-First Database (Added)
+  isar: ^3.1.0
+  isar_flutter_libs: ^3.1.0
+  path_provider: ^2.1.2
+  uuid: ^4.3.3
+  connectivity_plus: ^6.0.3
+
+  # Other existing dependencies
+  web_socket_channel: ^2.4.0
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   google_sign_in: ^6.2.1
@@ -26,11 +78,16 @@ dependencies:
   image_picker: ^1.0.8
   flutter_image_compress: ^2.1.0
   sms_autofill: ^2.3.0
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  
+  # Code Generators for Isar (Added)
+  build_runner: ^2.4.8
+  isar_generator: ^3.1.0
 
 flutter:
   uses-material-design: true

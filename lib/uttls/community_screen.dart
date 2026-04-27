@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 class CommunityScreen extends StatefulWidget {
@@ -11,6 +12,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
   bool isLoading = true;
   List posts = [];
 
+  bool _disposed = false; // ✅ lifecycle guard
+  Timer? _fetchTimer; // ✅ track timer
+
   @override
   void initState() {
     super.initState();
@@ -18,32 +22,46 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   Future<void> fetchPosts() async {
-    await Future.delayed(const Duration(seconds: 1));
+    _fetchTimer?.cancel();
 
-    // 🔥 MOCK DATA → replace with API
-    posts = [
-      {
-        "user": "Rahul",
-        "time": "2 hrs ago",
-        "content": "Great match today! 🏏",
-        "likes": 20,
-        "comments": 5
-      },
-      {
-        "user": "Suresh",
-        "time": "5 hrs ago",
-        "content": "Looking for weekend tournament players",
-        "likes": 10,
-        "comments": 2
-      }
-    ];
+    _fetchTimer = Timer(const Duration(seconds: 1), () {
+      if (!mounted || _disposed) return;
 
-    setState(() => isLoading = false);
+      // 🔥 MOCK DATA → replace with API
+      posts = [
+        {
+          "user": "Rahul",
+          "time": "2 hrs ago",
+          "content": "Great match today! 🏏",
+          "likes": 20,
+          "comments": 5
+        },
+        {
+          "user": "Suresh",
+          "time": "5 hrs ago",
+          "content": "Looking for weekend tournament players",
+          "likes": 10,
+          "comments": 2
+        }
+      ];
+
+      if (!mounted || _disposed) return;
+
+      setState(() => isLoading = false);
+    });
   }
 
   Future<void> refresh() async {
+    if (!mounted || _disposed) return;
     setState(() => isLoading = true);
     await fetchPosts();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _fetchTimer?.cancel(); // ✅ cancel timer
+    super.dispose();
   }
 
   @override
@@ -67,7 +85,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ),
         ),
 
-        // FAB
         Positioned(
           bottom: 20,
           right: 20,
@@ -113,7 +130,8 @@ class _PostCard extends StatelessWidget {
                     Text(post['user'],
                         style: const TextStyle(fontWeight: FontWeight.bold)),
                     Text(post['time'],
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.grey)),
                   ],
                 ),
               ),
@@ -129,9 +147,11 @@ class _PostCard extends StatelessWidget {
 
           Row(
             children: [
-              _action(Icons.thumb_up_alt_outlined, post['likes'].toString()),
+              _action(Icons.thumb_up_alt_outlined,
+                  post['likes'].toString()),
               const SizedBox(width: 16),
-              _action(Icons.chat_bubble_outline, post['comments'].toString()),
+              _action(Icons.chat_bubble_outline,
+                  post['comments'].toString()),
               const Spacer(),
               const Icon(Icons.share_outlined)
             ],

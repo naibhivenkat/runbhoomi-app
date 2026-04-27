@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/api_service.dart';
 
 class MyCricketScreen extends StatefulWidget {
   const MyCricketScreen({super.key});
@@ -18,27 +19,25 @@ class _MyCricketScreenState extends State<MyCricketScreen> {
     fetchData();
   }
 
+  ////////////////////////////////////////////////////////////
+  /// 🔥 REAL API CALL
+  ////////////////////////////////////////////////////////////
   Future<void> fetchData() async {
-    await Future.delayed(const Duration(seconds: 1));
+    try {
+      final data = await ApiService.getMyCricket(); 
 
-    // 🔥 MOCK DATA → replace with API
-    profile = {
-      "name": "Ravi Kumar",
-      "role": "All-rounder",
-      "matches": 24,
-      "runs": 820,
-      "wickets": 18,
-      "avg": 34.2,
-      "strike": 128.5,
-    };
+      if (!mounted) return;
 
-    matches = [
-      {"vs": "MI", "runs": 45, "wickets": 2, "result": "W"},
-      {"vs": "RCB", "runs": 12, "wickets": 0, "result": "L"},
-      {"vs": "CSK", "runs": 78, "wickets": 1, "result": "W"},
-    ];
+      setState(() {
+        profile = data["profile"];
+        matches = data["matches"] ?? [];
+        isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
 
-    setState(() => isLoading = false);
+      setState(() => isLoading = false);
+    }
   }
 
   @override
@@ -69,7 +68,10 @@ class _MyCricketScreenState extends State<MyCricketScreen> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
 
-          ...matches.map((m) => _MatchTile(match: m)),
+          if (matches.isEmpty)
+            const Text("No matches found")
+          else
+            ...matches.map((m) => _MatchTile(match: m)),
         ],
       ),
     );
@@ -99,15 +101,15 @@ class _ProfileCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(profile['name'],
+                Text(profile['name'] ?? "",
                     style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                         fontSize: 18)),
-                Text(profile['role'],
+                Text(profile['role'] ?? "",
                     style: const TextStyle(color: Colors.white70)),
                 const SizedBox(height: 6),
-                Text("Matches: ${profile['matches']}",
+                Text("Matches: ${profile['matches'] ?? 0}",
                     style: const TextStyle(color: Colors.white70)),
               ],
             ),
@@ -132,15 +134,15 @@ class _StatsGrid extends StatelessWidget {
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
       children: [
-        _stat("Runs", profile['runs'].toString()),
-        _stat("Wickets", profile['wickets'].toString()),
-        _stat("Average", profile['avg'].toString()),
-        _stat("Strike Rate", profile['strike'].toString()),
+        _stat("Runs", profile['runs']),
+        _stat("Wickets", profile['wickets']),
+        _stat("Average", profile['avg']),
+        _stat("Strike Rate", profile['strike']),
       ],
     );
   }
 
-  Widget _stat(String title, String value) {
+  Widget _stat(String title, dynamic value) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -153,9 +155,9 @@ class _StatsGrid extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.bold)),
+          Text("${value ?? 0}",
+              style:
+                  const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           Text(title, style: const TextStyle(color: Colors.grey)),
         ],
@@ -187,7 +189,7 @@ class _MatchTile extends StatelessWidget {
         children: [
           CircleAvatar(
             backgroundColor: isWin ? Colors.green : Colors.red,
-            child: Text(match['result'],
+            child: Text(match['result'] ?? "-",
                 style: const TextStyle(color: Colors.white)),
           ),
           const SizedBox(width: 12),
@@ -195,10 +197,10 @@ class _MatchTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("vs ${match['vs']}",
+                Text("vs ${match['vs'] ?? ''}",
                     style: const TextStyle(fontWeight: FontWeight.bold)),
                 Text(
-                    "${match['runs']} runs • ${match['wickets']} wickets",
+                    "${match['runs'] ?? 0} runs • ${match['wickets'] ?? 0} wickets",
                     style: const TextStyle(color: Colors.grey)),
               ],
             ),
@@ -230,3 +232,5 @@ class _Loading extends StatelessWidget {
     );
   }
 }
+
+

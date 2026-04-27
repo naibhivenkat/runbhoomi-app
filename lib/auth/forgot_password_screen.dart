@@ -76,12 +76,16 @@ class ForgotPasswordScreen extends StatefulWidget {
       _ForgotPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
-    with SingleTickerProviderStateMixin {
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   int step = 0;
   bool loading = false;
   bool obscure = true;
+
+  bool _disposed = false;
+  final List<Timer> _delayedTimers = [];
+  
+
 
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
@@ -95,30 +99,30 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   int seconds = 30;
   Timer? timer;
 
-  late AnimationController shakeController;
+  StreamSubscription<String>? _otpSub;
+
+  bool _shake = false; // ✅ safe shake flag
 
   @override
   void initState() {
     super.initState();
-
-    shakeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-
-    listenOtp(); // 🔥 auto OTP
+    listenOtp();
   }
 
   /// ================= AUTO OTP =================
-  void listenOtp() async {
-    await SmsAutoFill().listenForCode();
+void listenOtp() async {
+  await SmsAutoFill().listenForCode();
 
-    SmsAutoFill().code.listen((code) {
-      if (code.length == 6) {
-        fillOtp(code);
-      }
-    });
-  }
+  _otpSub?.cancel(); // ✅ avoid duplicate listeners
+
+  _otpSub = SmsAutoFill().code.listen((code) {
+    if (!mounted || _disposed) return;
+
+    if (code.length == 6) {
+      fillOtp(code);
+    }
+  });
+}
 
   void fillOtp(String code) {
     for (int i = 0; i < 6; i++) {
@@ -130,65 +134,99 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   }
 
   /// ================= TIMER =================
-  void startTimer() {
-    timer?.cancel();
+void startTimer() {
+  timer?.cancel();
 
-    setState(() => seconds = 30);
+  if (!mounted || _disposed) return;
 
-    timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (seconds <= 1) {
-        t.cancel();
-        setState(() => seconds = 0);
-      } else {
-        setState(() => seconds--);
-      }
-    });
-  }
+  setState(() => seconds = 30);
+
+  timer = Timer.periodic(const Duration(seconds: 1), (t) {
+    if (!mounted || _disposed) {
+      t.cancel();
+      return;
+    }
+
+    if (seconds <= 1) {
+      t.cancel();
+      setState(() => seconds = 0);
+      return;
+    }
+
+    setState(() => seconds--);
+  });
+}
 
   String getOtp() =>
       otpControllers.map((e) => e.text).join();
 
   void showMsg(String msg) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
   }
 
   /// ================= SEND OTP =================
   Future sendOtp() async {
+    if (!mounted) return;
     setState(() => loading = true);
 
     try {
       await ApiService.forgotOtp(emailController.text);
+
+      if (!mounted) return;
       setState(() => step = 1);
+
       startTimer();
       showMsg("OTP sent");
+
     } catch (e) {
       showMsg("Failed");
     } finally {
+      if (!mounted) return;
       setState(() => loading = false);
     }
   }
 
   /// ================= VERIFY OTP =================
-  Future verifyOtp() async {
-    setState(() => loading = true);
+Future verifyOtp() async {
+  if (!mounted || _disposed) return;
 
-    try {
-      await ApiService.verifyForgotOtp(
-        emailController.text,
-        getOtp(),
-      );
+  setState(() => loading = true);
 
-      setState(() => step = 2);
-    } catch (e) {
-      HapticFeedback.mediumImpact(); // 🔥 vibration
-      shakeController.forward(from: 0);
-      showMsg("Invalid OTP");
-      clearOtp();
-    } finally {
-      setState(() => loading = false);
-    }
+  try {
+    await ApiService.verifyForgotOtp(
+      emailController.text,
+      getOtp(),
+    );
+
+    if (!mounted || _disposed) return;
+
+    setState(() => step = 2);
+
+  } catch (e) {
+    if (!mounted || _disposed) return;
+
+    HapticFeedback.mediumImpact();
+
+    setState(() => _shake = true);
+
+    /// ✅ FIXED (use Timer instead of Future.delayed)
+    final t = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted || _disposed) return;
+      setState(() => _shake = false);
+    });
+
+    _delayedTimers.add(t); // 🔥 track it
+
+    showMsg("Invalid OTP");
+    clearOtp();
+
+  } finally {
+    if (!mounted || _disposed) return;
+    setState(() => loading = false);
   }
+}
 
   void clearOtp() {
     for (var c in otpControllers) {
@@ -211,36 +249,27 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   Color strengthColor() {
     switch (passwordStrength()) {
-      case 0:
-        return Colors.red;
-      case 1:
-        return Colors.orange;
-      case 2:
-        return Colors.blue;
-      case 3:
-        return Colors.green;
-      default:
-        return Colors.grey;
+      case 0: return Colors.red;
+      case 1: return Colors.orange;
+      case 2: return Colors.blue;
+      case 3: return Colors.green;
+      default: return Colors.grey;
     }
   }
 
   String strengthText() {
     switch (passwordStrength()) {
-      case 0:
-        return "Weak";
-      case 1:
-        return "Okay";
-      case 2:
-        return "Good";
-      case 3:
-        return "Strong";
-      default:
-        return "";
+      case 0: return "Weak";
+      case 1: return "Okay";
+      case 2: return "Good";
+      case 3: return "Strong";
+      default: return "";
     }
   }
 
   /// ================= RESET =================
   Future resetPassword() async {
+    if (!mounted) return;
     setState(() => loading = true);
 
     try {
@@ -248,6 +277,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         emailController.text,
         passwordController.text,
       );
+
       if (!mounted) return;
 
       showMsg("Password reset successful");
@@ -256,217 +286,204 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     } catch (e) {
       showMsg("Failed");
     } finally {
+      if (!mounted) return;
       setState(() => loading = false);
     }
   }
 
   /// ================= OTP BOX =================
+  
+
   Widget otpBox(int i) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      width: 48,
-      height: 55,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: focusNodes[i].hasFocus
-              ? Colors.blue
-              : Colors.grey.shade300,
-          width: 2,
-        ),
+  return Container(
+    width: 48,
+    height: 55,
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(
+        color: focusNodes[i].hasFocus
+            ? Colors.blue
+            : Colors.grey.shade300,
+        width: 2,
       ),
-      child: TextField(
-        controller: otpControllers[i],
-        focusNode: focusNodes[i],
-        maxLength: 1,
-        textAlign: TextAlign.center,
-        keyboardType: TextInputType.number,
-        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-
-        decoration: const InputDecoration(
-          counterText: "",
-          border: InputBorder.none,
-        ),
-
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-        ],
-
-        onChanged: (v) {
-          // 🔥 paste full OTP
-          if (v.length > 1) {
-            fillOtp(v);
-            return;
-          }
-
-          if (v.isNotEmpty && i < 5) {
-            focusNodes[i + 1].requestFocus();
-          }
-
-          if (v.isEmpty && i > 0) {
-            focusNodes[i - 1].requestFocus();
-          }
-
-          if (getOtp().length == 6) {
-            verifyOtp();
-          }
-        },
+    ),
+    child: TextField(
+      controller: otpControllers[i],
+      focusNode: focusNodes[i],
+      maxLength: 1,
+      textAlign: TextAlign.center,
+      keyboardType: TextInputType.number,
+      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+      decoration: const InputDecoration(
+        counterText: "",
+        border: InputBorder.none,
       ),
-    );
-  }
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+      ],
+      onChanged: (v) {
+        if (v.length > 1) {
+          fillOtp(v);
+          return;
+        }
+
+        if (v.isNotEmpty && i < 5) {
+          focusNodes[i + 1].requestFocus();
+        }
+
+        if (v.isEmpty && i > 0) {
+          focusNodes[i - 1].requestFocus();
+        }
+
+        if (getOtp().length == 6) {
+          verifyOtp();
+        }
+      },
+    ),
+  );
+}
 
   /// ================= UI =================
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-
-      appBar: AppBar(
-        title: const Text("Reset Password"),
-        centerTitle: true,
-      ),
-
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 400),
-
-          child: Column(
-            key: ValueKey(step),
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-
-              const SizedBox(height: 20),
-
-              const Center(
-                child: Icon(Icons.lock_reset, size: 60),
-              ),
-
-              const SizedBox(height: 10),
-
-              const Center(
-                child: Text(
-                  "Forgot Password",
-                  style: TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-              ),
-
-              const SizedBox(height: 30),
-
-              if (step == 0) ...[
-                AuthTextField(
-                  controller: emailController,
-                  hint: "Email",
-                  icon: Icons.email,
-                ),
-                const SizedBox(height: 25),
-                AuthButton(
-                  text: "Send OTP",
-                  loading: loading,
-                  onPressed: sendOtp,
-                ),
-              ],
-
-              if (step == 1) ...[
-                const Text("Enter OTP"),
-                const SizedBox(height: 20),
-
-                AnimatedBuilder(
-                  animation: shakeController,
-                  builder: (context, child) {
-                    double offset =
-                        (shakeController.value - 0.5) * 20;
-                    return Transform.translate(
-                      offset: Offset(offset, 0),
-                      child: child,
-                    );
-                  },
-                  child: Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment.spaceBetween,
-                    children:
-                        List.generate(6, (i) => otpBox(i)),
-                  ),
-                ),
-
-                const SizedBox(height: 25),
-
-                Center(
-                  child: OtpTimer(
-                    seconds: seconds,
-                    total: 30,
-                    onResend: sendOtp,
-                  ),
-                ),
-              ],
-
-              if (step == 2) ...[
-                TextField(
-                  controller: passwordController,
-                  obscureText: obscure,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: "New Password",
-                    prefixIcon: const Icon(Icons.lock),
-                    suffixIcon: IconButton(
-                      icon: Icon(obscure
-                          ? Icons.visibility
-                          : Icons.visibility_off),
-                      onPressed: () {
-                        setState(() => obscure = !obscure);
-                      },
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: LinearProgressIndicator(
-                        value: passwordStrength() / 3,
-                        color: strengthColor(),
-                        backgroundColor: Colors.grey.shade200,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(
-                      strengthText(),
-                      style: TextStyle(color: strengthColor()),
-                    )
-                  ],
-                ),
-
-                const SizedBox(height: 25),
-
-                AuthButton(
-                  text: "Reset Password",
-                  loading: loading,
-                  onPressed: resetPassword,
-                ),
-              ],
-            ],
+  return Scaffold(
+    backgroundColor: AppColors.background,
+    appBar: AppBar(
+      title: const Text("Reset Password"),
+      centerTitle: true,
+    ),
+    body: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        key: ValueKey(step),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 20),
+          const Center(child: Icon(Icons.lock_reset, size: 60)),
+          const SizedBox(height: 10),
+          const Center(
+            child: Text(
+              "Forgot Password",
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
           ),
-        ),
+          const SizedBox(height: 30),
+
+          if (step == 0) ...[
+            AuthTextField(
+              controller: emailController,
+              hint: "Email",
+              icon: Icons.email,
+            ),
+            const SizedBox(height: 25),
+            AuthButton(
+              text: "Send OTP",
+              loading: loading,
+              onPressed: sendOtp,
+            ),
+          ],
+
+          if (step == 1) ...[
+            const Text("Enter OTP"),
+            const SizedBox(height: 20),
+
+            Transform.translate(
+              offset: Offset(_shake ? 10 : 0, 0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List.generate(6, (i) => otpBox(i)),
+              ),
+            ),
+
+            const SizedBox(height: 25),
+
+            Center(
+              child: OtpTimer(
+                seconds: seconds,
+                total: 30,
+                onResend: sendOtp,
+              ),
+            ),
+          ],
+
+          if (step == 2) ...[
+            TextField(
+              controller: passwordController,
+              obscureText: obscure,
+              onChanged: (_) {
+                if (!mounted) return;
+                setState(() {});
+              },
+              decoration: InputDecoration(
+                hintText: "New Password",
+                prefixIcon: const Icon(Icons.lock),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    obscure
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                  ),
+                  onPressed: () {
+                    if (!mounted) return;
+                    setState(() => obscure = !obscure);
+                  },
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: LinearProgressIndicator(
+                    value: passwordStrength() / 3,
+                    color: strengthColor(),
+                    backgroundColor: Colors.grey.shade200,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  strengthText(),
+                  style: TextStyle(color: strengthColor()),
+                )
+              ],
+            ),
+            const SizedBox(height: 25),
+            AuthButton(
+              text: "Reset Password",
+              loading: loading,
+              onPressed: resetPassword,
+            ),
+          ],
+        ],
       ),
-    );
+    ),
+  );
+}
+  
+@override
+void dispose() {
+  _disposed = true;
+
+  /// ✅ cancel timers first
+  timer?.cancel();
+
+  /// ✅ cancel delayed timers
+  for (var t in _delayedTimers) {
+    t.cancel();
   }
 
-  /// ================= DISPOSE =================
-  @override
-  void dispose() {
-    timer?.cancel();
-    shakeController.dispose();
-    SmsAutoFill().unregisterListener(); // 🔥 important
-    super.dispose();
-  }
+  /// ✅ cancel stream
+  _otpSub?.cancel();
+
+  /// ✅ unregister SMS listener
+  SmsAutoFill().unregisterListener();
+
+  super.dispose();
+}
 }

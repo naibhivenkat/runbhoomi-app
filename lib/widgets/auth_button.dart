@@ -38,76 +38,63 @@ class _AuthButtonState extends State<AuthButton> {
 
   @override
   Widget build(BuildContext context) {
-    final bool disabled = widget.onPressed == null || widget.loading;
+  final bool disabled = widget.onPressed == null || widget.loading;
 
-    return AnimatedScale(
-      scale: scale,
-      duration: const Duration(milliseconds: 120),
-
-      child: SizedBox(
-        height: 52,
-
-        child: ElevatedButton(
-          onPressed: disabled ? null : widget.onPressed,
-
-          style: ElevatedButton.styleFrom(
-            elevation: disabled ? 0 : 4,
-
-            backgroundColor: disabled
-                ? Colors.grey.shade300
-                : (widget.color ?? AppColors.primary),
-
-            foregroundColor:
-                widget.textColor ?? Colors.white,
-
-            shadowColor: Colors.black26,
-
-            side: widget.border
-                ? const BorderSide(color: AppColors.border)
-                : BorderSide.none,
-
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-            ),
+  return Transform.scale( 
+    scale: scale,
+    child: SizedBox(
+      height: 52,
+      child: ElevatedButton(
+        onPressed: disabled ? null : widget.onPressed,
+        style: ElevatedButton.styleFrom(
+          elevation: disabled ? 0 : 4,
+          backgroundColor: disabled
+              ? Colors.grey.shade300
+              : (widget.color ?? AppColors.primary),
+          foregroundColor: widget.textColor ?? Colors.white,
+          shadowColor: Colors.black26,
+          side: widget.border
+              ? const BorderSide(color: AppColors.border)
+              : BorderSide.none,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
           ),
-
-          onLongPress: () {},
-
-          child: GestureDetector(
-            onTapDown: onTapDown,
-            onTapUp: onTapUp,
-            onTapCancel: () => onTapUp(null),
-
-            child: Center(
-              child: widget.loading
-                  ? const SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (widget.icon != null) ...[
-                          widget.icon!,
-                          const SizedBox(width: 8),
-                        ],
-                        Text(
-                          widget.text,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
+        ),
+        onLongPress: () {},
+        child: GestureDetector(
+          onTapDown: onTapDown,
+          onTapUp: onTapUp,
+          onTapCancel: () => onTapUp(null),
+          child: Center(
+            child: widget.loading
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
                     ),
-            ),
+                  )
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (widget.icon != null) ...[
+                        widget.icon!,
+                        const SizedBox(width: 8),
+                      ],
+                      Text(
+                        widget.text,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
+  }

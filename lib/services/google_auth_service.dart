@@ -1,3 +1,4 @@
+
 import 'package:google_sign_in/google_sign_in.dart';
 
 class GoogleAuthService {
@@ -9,19 +10,35 @@ class GoogleAuthService {
 
   static Future<String?> signIn() async {
     try {
+      // 🔥 VERY IMPORTANT: clear old session (fixes expired token issue)
+      await _googleSignIn.signOut();
+
+      // 🔥 Start fresh login
       final GoogleSignInAccount? account =
           await _googleSignIn.signIn();
 
-      if (account == null) return null;
+      if (account == null) {
+        print("User cancelled Google login");
+        return null;
+      }
 
-      final auth = await account.authentication;
+      // 🔥 Get fresh authentication tokens
+      final GoogleSignInAuthentication auth =
+          await account.authentication;
 
-      print("ID TOKEN: ${auth.idToken}"); // debug
+      final idToken = auth.idToken;
 
-      return auth.idToken;
+      if (idToken == null) {
+        print("❌ ID Token is null");
+        return null;
+      }
+
+      print("✅ NEW ID TOKEN: $idToken");
+
+      return idToken;
 
     } catch (e) {
-      print("Google Sign In Error: $e");
+      print("❌ Google Sign In Error: $e");
       return null;
     }
   }

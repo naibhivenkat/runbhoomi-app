@@ -78,28 +78,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
 
       /// 🔥 SCREEN SWITCH (SMOOTH)
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        child: _screens[_currentIndex],
-      ),
+
+      body: _screens[_currentIndex],
 
       /// 🔥 SMART FAB (ONLY WHERE NEEDED)
-      floatingActionButton: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        transitionBuilder: (child, anim) =>
-            ScaleTransition(scale: anim, child: child),
-        child: (_currentIndex == 1 || _currentIndex == 3)
-            ? FloatingActionButton.extended(
-                key: ValueKey(_currentIndex),
-                backgroundColor: Colors.green,
-                onPressed: () {
-                  _showPostOptions(context);
-                },
-                icon: const Icon(Icons.add),
-                label: const Text("Post"),
-              )
-            : const SizedBox.shrink(),
-      ),
+      floatingActionButton: (_currentIndex == 1 || _currentIndex == 3)
+    ? FloatingActionButton.extended(
+        key: ValueKey(_currentIndex),
+        backgroundColor: Colors.green,
+        onPressed: () {
+          _showPostOptions(context);
+        },
+        icon: const Icon(Icons.add),
+        label: const Text("Post"),
+      )
+    : null,
 
       /// 🔻 PREMIUM BOTTOM NAV
       bottomNavigationBar: _premiumBottomBar(),

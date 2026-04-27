@@ -20,6 +20,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool loading = false;
   bool obscure = true;
+  bool _disposed = false;
 
   int step = 0;
 
@@ -35,99 +36,134 @@ class _LoginScreenState extends State<LoginScreen> {
   int seconds = 30;
   Timer? timer;
 
-  void startTimer() {
-    seconds = 30;
-    timer?.cancel();
+void startTimer() {
+  timer?.cancel();
 
-    timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (seconds == 0) {
-        t.cancel();
-      } else {
-        setState(() => seconds--);
-      }
-    });
-  }
+  if (!mounted || _disposed) return;
+
+  setState(() => seconds = 30);
+
+  timer = Timer.periodic(const Duration(seconds: 1), (t) {
+    if (!mounted || _disposed) {
+      t.cancel();
+      return;
+    }
+
+    if (seconds <= 1) {
+      t.cancel();
+      setState(() => seconds = 0);
+    } else {
+      setState(() => seconds--);
+    }
+  });
+}
 
   String getOtp() {
     return otpControllers.map((e) => e.text).join();
   }
 
-  // ================= LOGIN =================
+
+
   Future login() async {
-    setState(() => loading = true);
+  if (!mounted || _disposed) return;
 
-    try {
-      final res = await ApiService.login(
-        emailController.text,
-        passwordController.text,
-      );
+  setState(() => loading = true);
 
-      await SessionService.saveUser(
-        emailController.text.trim(),
-        res["token"],
-      );
+  try {
+    final res = await ApiService.login(
+      emailController.text,
+      passwordController.text,
+    );
 
-      if (!mounted) return;
+    await SessionService.saveUser(
+      emailController.text.trim(),
+      res["token"],
+      userId: res["user_id"],
+    );
 
-      Navigator.pushReplacementNamed(context, "/home"); // ✅ CLEAN
+    if (!mounted || _disposed) return;
 
-    } catch (e) {
-      showError("Invalid email or password");
-    } finally {
-      setState(() => loading = false);
-    }
+    ApiService.token = res["token"];
+
+    Navigator.pushReplacementNamed(context, "/home");
+
+  } catch (e) {
+    if (!mounted || _disposed) return;
+    showError("Invalid email or password");
+
+  } finally {
+    if (!mounted || _disposed) return;
+    setState(() => loading = false);
   }
+}
 
-  // ================= SEND OTP =================
+
+
   Future sendOtp() async {
-    if (emailController.text.isEmpty) {
-      showError("Enter email");
-      return;
-    }
-
-    setState(() => loading = true);
-
-    try {
-      await ApiService.loginOtp(emailController.text);
-
-      setState(() => step = 1);
-      startTimer();
-
-      showError("OTP sent");
-
-    } catch (e) {
-      showError("Failed to send OTP");
-    } finally {
-      setState(() => loading = false);
-    }
+  if (emailController.text.isEmpty) {
+    showError("Enter email");
+    return;
   }
+
+  if (!mounted || _disposed) return;
+
+  setState(() => loading = true);
+
+  try {
+    await ApiService.loginOtp(emailController.text);
+
+    if (!mounted || _disposed) return;
+
+    setState(() => step = 1);
+
+    startTimer();
+
+    showError("OTP sent");
+
+  } catch (e) {
+    if (!mounted || _disposed) return;
+    showError("Failed to send OTP");
+
+  } finally {
+    if (!mounted || _disposed) return;
+    setState(() => loading = false);
+  }
+}
 
   // ================= VERIFY OTP =================
   Future verifyOtp() async {
-    setState(() => loading = true);
+  if (!mounted || _disposed) return;
 
-    try {
-      final res = await ApiService.verifyLoginOtp(
-        emailController.text,
-        getOtp(),
-      );
+  setState(() => loading = true);
 
-      await SessionService.saveUser(
-        emailController.text.trim(),
-        res["token"],
-      );
+  try {
+    final res = await ApiService.verifyLoginOtp(
+      emailController.text,
+      getOtp(),
+    );
 
-      if (!mounted) return;
+    await SessionService.saveUser(
+      emailController.text.trim(),
+      res["token"],
+      userId: res["user_id"],
+    );
 
-      Navigator.pushReplacementNamed(context, "/home"); // ✅ FIXED
+    if (!mounted || _disposed) return;
 
-    } catch (e) {
-      showError("Invalid OTP");
-      clearOtp();
-    } finally {
-      setState(() => loading = false);
-    }
+    ApiService.token = res["token"];
+
+    Navigator.pushReplacementNamed(context, "/home");
+
+  } catch (e) {
+    if (!mounted || _disposed) return;
+    showError("Invalid OTP");
+    clearOtp();
+
+  } finally {
+    if (!mounted || _disposed) return;
+    setState(() => loading = false);
   }
+}
 
   void clearOtp() {
     for (var c in otpControllers) {
@@ -137,37 +173,118 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ================= GOOGLE LOGIN =================
+//   Future googleLogin() async {
+//   if (!mounted || _disposed) return;
+
+//   setState(() => loading = true);
+
+//   try {
+//     final idToken = await GoogleAuthService.signIn();
+
+//     if (!mounted || _disposed) return;
+
+//     final res = await ApiService.googleLogin(idToken!);
+
+//     if (!mounted || _disposed) return;
+
+//     final email = res["user"]["email"];
+
+//     if (email == null || email.toString().isEmpty) {
+//       showError("Email not returned from Google login");
+//       return;
+//     }
+
+//     await SessionService.saveUser(
+//       email,
+//       res["token"],
+//       userId: res["user"]["id"],
+//     );
+
+//     if (!mounted || _disposed) return;
+
+//     ApiService.token = res["token"];
+
+//     Navigator.pushReplacementNamed(context, "/home");
+
+//   } catch (e) {
+//     if (!mounted || _disposed) return;
+//     showError("Google login failed");
+
+//   } finally {
+//     if (!mounted || _disposed) return;
+//     setState(() => loading = false);
+//   }
+// }
+
+
+
+// ================= GOOGLE LOGIN =================
   Future googleLogin() async {
+    if (!mounted || _disposed) return;
+
     setState(() => loading = true);
 
     try {
       final idToken = await GoogleAuthService.signIn();
-      final res = await ApiService.googleLogin(idToken!);
 
+      if (idToken == null) {
+        setState(() => loading = false);
+        return; // User canceled the login dialog
+      }
 
-        final email = res["user"]["email"];
-        
+      if (!mounted || _disposed) return;
 
-        if (email == null || email.toString().isEmpty) {
-          showError("Email not returned from Google login");
-          return;
-        }
+      final res = await ApiService.googleLogin(idToken);
 
-        await SessionService.saveUser(
-          email,
-          res["token"],
-        );
+      if (!mounted || _disposed) return;
 
-      if (!mounted) return;
+      // 🔥 DEBUG PRINT: See exactly what the backend returned
+      debugPrint("✅ Google Login API Response: $res");
 
-      Navigator.pushReplacementNamed(context, "/home"); 
+      // 🔥 FAIL-SAFE PARSING: Handles both nested {"user": {"email": "..."}} and flat {"email": "..."} responses
+      final email = res["user"]?["email"] ?? res["email"];
+      final userId = res["user"]?["id"] ?? res["user_id"] ?? res["id"];
+      final token = res["token"] ?? res["access_token"];
 
-    } catch (e) {
-      showError("Google login failed");
+      if (email == null || email.toString().isEmpty) {
+        showError("Email not returned from backend");
+        return;
+      }
+
+      if (token == null) {
+        showError("Token not returned from backend");
+        return;
+      }
+
+      await SessionService.saveUser(
+        email.toString().trim(),
+        token.toString(),
+        userId: userId?.toString() ?? "",
+      );
+
+      if (!mounted || _disposed) return;
+
+      ApiService.token = token.toString();
+
+      Navigator.pushReplacementNamed(context, "/home");
+
+    } catch (e, stacktrace) {
+      if (!mounted || _disposed) return;
+      
+      // 🔥 PRINT THE ACTUAL ERROR TO THE CONSOLE
+      debugPrint("❌ Google Login Crash: $e");
+      debugPrint("❌ Stacktrace: $stacktrace");
+      
+      showError("Google login failed. Check console.");
+
     } finally {
+      if (!mounted || _disposed) return;
       setState(() => loading = false);
     }
   }
+
+
+
 
   void showError(String msg) {
     ScaffoldMessenger.of(context)
@@ -389,6 +506,21 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+
+  @override
+void dispose() {
+  _disposed = true;
+  timer?.cancel();
+  super.dispose();
+  for (var c in otpControllers) {
+  c.dispose();
+}
+
+for (var f in otpFocusNodes) {
+  f.dispose();
+}
+}
+
 }
 
 

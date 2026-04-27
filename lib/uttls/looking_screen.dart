@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 class LookingScreen extends StatefulWidget {
@@ -11,6 +12,9 @@ class _LookingScreenState extends State<LookingScreen> {
   bool isLoading = true;
   List posts = [];
 
+  bool _disposed = false; // ✅ lifecycle guard
+  Timer? _fetchTimer; // ✅ track timer
+
   @override
   void initState() {
     super.initState();
@@ -18,38 +22,53 @@ class _LookingScreenState extends State<LookingScreen> {
   }
 
   Future<void> fetchPosts() async {
-    await Future.delayed(const Duration(seconds: 1));
+    _fetchTimer?.cancel();
 
-    // 🔥 MOCK → replace with API
-    posts = [
-      {
-        "name": "Ravi",
-        "role": "All-rounder",
-        "distance": "2 km",
-        "time": "10 min ago",
-        "desc": "Need 2 players for evening match",
-        "tags": ["Tennis", "Friendly", "₹100"],
-        "likes": 12,
-        "comments": 4
-      },
-      {
-        "name": "Arjun",
-        "role": "Bowler",
-        "distance": "5 km",
-        "time": "30 min ago",
-        "desc": "Box cricket match tonight",
-        "tags": ["Box", "Night", "₹200"],
-        "likes": 5,
-        "comments": 2
-      }
-    ];
+    _fetchTimer = Timer(const Duration(seconds: 1), () {
+      if (!mounted || _disposed) return;
 
-    setState(() => isLoading = false);
+      // 🔥 MOCK → replace with API
+      posts = [
+        {
+          "name": "Ravi",
+          "role": "All-rounder",
+          "distance": "2 km",
+          "time": "10 min ago",
+          "desc": "Need 2 players for evening match",
+          "tags": ["Tennis", "Friendly", "₹100"],
+          "likes": 12,
+          "comments": 4
+        },
+        {
+          "name": "Arjun",
+          "role": "Bowler",
+          "distance": "5 km",
+          "time": "30 min ago",
+          "desc": "Box cricket match tonight",
+          "tags": ["Box", "Night", "₹200"],
+          "likes": 5,
+          "comments": 2
+        }
+      ];
+
+      if (!mounted || _disposed) return;
+
+      setState(() => isLoading = false);
+    });
   }
 
   Future<void> refresh() async {
+    if (!mounted || _disposed) return;
+
     setState(() => isLoading = true);
     await fetchPosts();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _fetchTimer?.cancel(); // ✅ prevent memory leak
+    super.dispose();
   }
 
   @override
@@ -73,7 +92,6 @@ class _LookingScreenState extends State<LookingScreen> {
           ),
         ),
 
-        // 🔥 FILTER BAR
         Positioned(
           top: 10,
           left: 16,
@@ -113,11 +131,14 @@ class _PostCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("${post['name']} (${post['role']})",
-                        style: const TextStyle(fontWeight: FontWeight.bold)),
+                    Text(
+                      "${post['name']} (${post['role']})",
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
                     Text(
                       "${post['distance']} • ${post['time']}",
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -143,7 +164,8 @@ class _PostCard extends StatelessWidget {
 
           Row(
             children: [
-              _action(Icons.thumb_up_alt_outlined, post['likes'].toString()),
+              _action(Icons.thumb_up_alt_outlined,
+                  post['likes'].toString()),
               const SizedBox(width: 16),
               _action(Icons.chat_bubble_outline,
                   post['comments'].toString()),
@@ -153,7 +175,8 @@ class _PostCard extends StatelessWidget {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
                 child: const Text("Join"),
               )
@@ -180,12 +203,14 @@ class _FilterBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 10)
+          BoxShadow(
+              color: Colors.black.withOpacity(0.08), blurRadius: 10)
         ],
       ),
       child: Row(
@@ -211,14 +236,18 @@ class _Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: Colors.green.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         text,
-        style: const TextStyle(color: Colors.green, fontSize: 12),
+        style: const TextStyle(
+          color: Colors.green,
+          fontSize: 12,
+        ),
       ),
     );
   }
